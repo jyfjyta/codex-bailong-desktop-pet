@@ -8,7 +8,7 @@
    - 以白龙桌宠 v0.3.3 为改造基线（并合入 v0.4.1 十段新动作），构建了 Codex 联动、水球状态气泡、额度与 Token 统计日报、独立素材分发、视频全屏让位及完整部署架构（截至公开版本 v1.0.1）。
 3. **macOS 社区移植基线（Kki1ds）**：https://github.com/Kki1ds/codex-bailong-desktop-pet
    - 基于 Wunsch2048 v1.0.1 提供了 Apple Silicon macOS 平台适配与 `.app` / `.dmg` 构建流程（`1.0.1-mac.1`）。
-4. **当前分支扩展（jyfjyta/-）**：https://github.com/jyfjyta/-
+4. **当前分支扩展（jyfjyta/codex-bailong-desktop-pet）**：https://github.com/jyfjyta/codex-bailong-desktop-pet
    - 在上述上游作品基础上新增 Live2D Q版打字伴侣（键盘/鼠标实时同步、10 种互动表情与系统密码防窥）、Codex / Antigravity 双源切换与 `agy` CLI 实时 4 项额度同步，以及 Windows 10/11 与 macOS 的跨平台适配。
 
 ## 授权与再分发边界

@@ -7,7 +7,7 @@
 > **致谢与项目来源（Upstream Attribution）**  
 > 本仓库是在原项目 **[Wunsch2048/codex-bailong-desktop-pet](https://github.com/Wunsch2048/codex-bailong-desktop-pet)**（作者：**[Wunsch2048](https://github.com/Wunsch2048)**，基于 **[jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet)** 持续演进）以及 **[Kki1ds/codex-bailong-desktop-pet](https://github.com/Kki1ds/codex-bailong-desktop-pet)** 的 macOS 社区移植版（`1.0.1-mac.1`）基础上二次开发维护的增强分支。核心桌面宠物框架、白龙角色资产、Codex 面板与统计日报体系均源自上游原作者，完整版权与授权边界见 [NOTICE.md](NOTICE.md)。
 
-**[下载最新版本（Releases）](https://github.com/jyfjyta/-/releases)** | **[原项目（Wunsch2048）](https://github.com/Wunsch2048/codex-bailong-desktop-pet)** | [macOS 移植说明](docs/MACOS.md) | [开发与构建说明](docs/DEVELOPMENT.md) | [来源与授权](NOTICE.md)
+**[下载最新版本（Releases）](https://github.com/jyfjyta/codex-bailong-desktop-pet/releases)** | **[原项目（Wunsch2048）](https://github.com/Wunsch2048/codex-bailong-desktop-pet)** | [macOS 移植说明](docs/MACOS.md) | [开发与构建说明](docs/DEVELOPMENT.md) | [来源与授权](NOTICE.md)
 
 ---
 
@@ -56,7 +56,7 @@
 
 ### macOS（Apple Silicon）推荐下载 DMG
 
-前往 [Releases](https://github.com/jyfjyta/-/releases) 下载最新安装包：
+前往 [Releases](https://github.com/jyfjyta/codex-bailong-desktop-pet/releases) 下载最新安装包：
 
 | 文件 | 用法 |
 | --- | --- |
@@ -146,7 +146,7 @@ py -3.12 -m venv .venv
 - [macOS 架构与验收记录](docs/MACOS.md)
 - [从源码运行与构建指南](docs/DEVELOPMENT.md)
 - [上游新增功能说明](docs/新增功能说明.txt) · [完整迭代历史](docs/迭代历史.txt)
-- 本分支问题反馈：[jyfjyta/- Issues](https://github.com/jyfjyta/-/issues)
+- 本分支问题反馈：[jyfjyta/codex-bailong-desktop-pet Issues](https://github.com/jyfjyta/codex-bailong-desktop-pet/issues)
 
 ---
 
@@ -157,7 +157,7 @@ py -3.12 -m venv .venv
 1. **原版白龙桌宠基础与角色形象**：[jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet)
 2. **上游 Codex 增强版桌宠原作者**：**[Wunsch2048/codex-bailong-desktop-pet](https://github.com/Wunsch2048/codex-bailong-desktop-pet)**（v1.0.1，完成界面重构、Codex 联动、额度与日报体系、工作动作与部署架构）
 3. **macOS 社区移植基线**：[Kki1ds/codex-bailong-desktop-pet](https://github.com/Kki1ds/codex-bailong-desktop-pet)（`1.0.1-mac.1`）
-4. **本仓库扩展（[jyfjyta/-](https://github.com/jyfjyta/-)）**：新增 Live2D Q版打字伴侣（10 表情与密码防窥）、Antigravity 双源联动与 `agy` CLI 真实四项额度实时同步、以及跨平台（macOS + Windows 10/11）统一适配。
+4. **本仓库扩展（[jyfjyta/codex-bailong-desktop-pet](https://github.com/jyfjyta/codex-bailong-desktop-pet)）**：新增 Live2D Q版打字伴侣（10 表情与密码防窥）、Antigravity 双源联动与 `agy` CLI 真实四项额度实时同步、以及跨平台（macOS + Windows 10/11）统一适配。
 
 原项目未随基线提供统一的开源代码 LICENSE；本仓库严格沿用上游授权边界，**不擅自将整体项目标注为 MIT 或授予商业再分发许可**。详细说明见 [来源与授权说明（NOTICE.md）](NOTICE.md)、保留的 [原素材说明](docs/upstream/ASSETS.md) 与 [v0.4.1 素材说明](docs/upstream/ASSETS-v0.4.1.md)。
 
