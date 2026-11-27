@@ -851,7 +851,7 @@ class EnhancedPet(Pet):
         if self.closing or self.refresh_flow.active('bubble'):return
         self.bubble.set_refresh_busy(True)
         sources=dict(quota=self.refresh_quota(force=True),token=self.refresh_tokens())
-        if self.linkage_provider()=='codex':sources['reset']=self.refresh_reset_feed()
+        if (self.linkage_provider() if hasattr(self,'linkage_provider') else 'codex')=='codex':sources['reset']=self.refresh_reset_feed()
         self._requested_refresh_sources=set(sources)
         self.refresh_flow.begin('bubble',sources)
         if self.refresh_flow.batches:self.refresh_timeout.start()

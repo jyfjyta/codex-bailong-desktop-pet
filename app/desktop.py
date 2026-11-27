@@ -160,7 +160,7 @@ class DesktopPet(EnhancedPet):
         self.schedule_animation()
 
     def poll_codex_presence(self):
-        if self.linkage_provider()=='antigravity':return
+        if (self.linkage_provider() if hasattr(self,'linkage_provider') else 'codex')=='antigravity':return
         from codex_connection import is_wsl_source
         if is_wsl_source():return
         if not self.settings.get('codex_exit') or self._codex_polling or self._codex_closing:return

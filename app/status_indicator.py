@@ -94,7 +94,10 @@ class StatusIndicator(QWidget):
         return self.acknowledged_at is not None and now-self.acknowledged_at<1.
 
     def observe(self,event):
-        if (event.get('user_message') or event.get('clear_unread')) and event.get('session'):self.acknowledge(event['session'])
+        silent_clear=bool(event.get('clear_unread') and not event.get('user_message'))
+        if (event.get('user_message') or event.get('clear_unread')) and event.get('session'):
+            self.acknowledge(event['session'])
+            if silent_clear:self.acknowledged_at=None;self.completed=False
         was_busy=self.is_busy()
         self.state=event.get('state','idle')
         count=event.get('active',0)
@@ -102,7 +105,7 @@ class StatusIndicator(QWidget):
         count=event.get('waiting',0)
         self.waiting=max(0,count) if isinstance(count,(int,float)) else 0
         if self.is_busy():
-            self.completed=False;self.acknowledged_at=None
+            self.completed=False
             if not was_busy:self.busy_since=self.clock()
         elif self.state in ('offline','interrupted'):
             self.completed=False
