@@ -3,7 +3,7 @@
 Every run writes to new build/macos-<version>-<time> and release/macos-<version>-<time>
 folders and never deletes anything, so earlier builds stay in place. --dmg also
 writes a drag-to-Applications disk image and its SHA-256 next to the .app."""
-import argparse,hashlib,json,platform,plistlib,subprocess,sys,time
+import argparse,hashlib,json,os,platform,plistlib,subprocess,sys,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'app'))
@@ -74,9 +74,10 @@ def disk_image(bundle,work,dist):
     print(f'已生成 {image}')
     return image
 
-def build(cards_only=False,dmg=False):
+def build(cards_only=False,dmg=False,sign_identity=None):
     """Bundle the light set, or nothing with cards_only: animations are then downloaded in settings, as with the Windows card-only package."""
     if sys.platform!='darwin':raise SystemExit('只能在 macOS 上构建 .app')
+    identity=(sign_identity or os.environ.get('BAILONG_CODESIGN_IDENTITY') or '-').strip() or '-'
     root,names=(None,[]) if cards_only else materials()
     stamp=time.strftime('%Y%m%d-%H%M%S');work=fresh('build',stamp);dist=fresh('release',stamp)
     stage=work/'materials'
@@ -101,10 +102,12 @@ def build(cards_only=False,dmg=False):
     plist.update(CFBundleName=NAME,CFBundleDisplayName=NAME,CFBundleShortVersionString=MAC_VERSION,CFBundleVersion=VERSION,
                  LSUIElement=True,NSHighResolutionCapable=True,LSMinimumSystemVersion='12.0')
     with info.open('wb') as f:plistlib.dump(plist,f)
-    # Editing Info.plist breaks PyInstaller's ad-hoc signature; arm64 needs one to launch.
-    subprocess.run(['codesign','--force','--deep','--sign','-',str(bundle)],check=True)
+    # Editing Info.plist breaks PyInstaller's ad-hoc signature; arm64 needs a valid signature to launch.
+    # Pass --sign "<identity>" or BAILONG_CODESIGN_IDENTITY to keep macOS TCC Input Monitoring stable across rebuilds.
+    subprocess.run(['codesign','--force','--deep','--sign',identity,str(bundle)],check=True)
     subprocess.run(['codesign','--verify','--deep','--strict',str(bundle)],check=True)
-    print(f'已构建 {bundle}（{"仅卡片，动画可在设置中下载" if cards_only else "已内置动画"}；ad-hoc 签名，未公证）')
+    sign_desc='ad-hoc 签名，未公证' if identity=='-' else f'证书签名（{identity}）'
+    print(f'已构建 {bundle}（{"仅卡片，动画可在设置中下载" if cards_only else "已内置动画"}；{sign_desc}）')
     if dmg:disk_image(bundle,work,dist)
     return bundle
 
@@ -112,5 +115,6 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cards-only',action='store_true',help='不内置动画；启动后在 设置 → 角色与素材 中下载轻量或高清动画')
     parser.add_argument('--dmg',action='store_true',help='同时生成可拖入“应用程序”的 .dmg 及其 SHA-256')
+    parser.add_argument('--sign',default=None,help='macOS 代码签名证书名或 SHA-1（默认读取 BAILONG_CODESIGN_IDENTITY，否则 ad-hoc）')
     options=parser.parse_args()
-    build(options.cards_only,options.dmg)
+    build(options.cards_only,options.dmg,options.sign)
