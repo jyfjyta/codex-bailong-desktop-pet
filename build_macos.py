@@ -13,7 +13,7 @@ from sustained_assets import seam_items
 from platform_paths import BUNDLE_ID
 NAME='小白龙'
 # Community macOS release number on top of the upstream version; bump the suffix per macOS release.
-MAC_VERSION=f'{VERSION}-mac.1'
+MAC_VERSION=f'{VERSION}-mac.2'
 # Data the frozen app reads below platform_paths.app_root() (Contents/Resources).
 DATA=['app/fonts','app/sounds','app/branding','app/licenses','app/typing_companion/assets','app/material_catalog.json','app/book_catalog.json']
 
