@@ -60,8 +60,8 @@
 
 | 文件 | 用法 |
 | --- | --- |
-| `小白龙-1.0.1-mac.2-macos-arm64.dmg` | 双击打开，将 `小白龙.app` 拖入右侧 `Applications` 文件夹即可使用 |
-| `小白龙-1.0.1-mac.2-macos-arm64.dmg.sha256` | 在下载目录运行 `shasum -a 256 -c 小白龙-1.0.1-mac.2-macos-arm64.dmg.sha256` 校验完整性 |
+| `BailongEnhanced-1.0.1-mac.2-macos-arm64.dmg` | 双击打开，将 `小白龙.app` 拖入右侧 `Applications` 文件夹即可使用 |
+| `BailongEnhanced-1.0.1-mac.2-macos-arm64.dmg.sha256` | 在下载目录运行 `shasum -a 256 -c BailongEnhanced-1.0.1-mac.2-macos-arm64.dmg.sha256` 校验完整性 |
 
 > **首次打开提示**：macOS 社区包采用本地 ad-hoc 签名（未经过 Apple 公证）。首次打开若提示“无法验证开发者”，可在 Finder 中右键 `小白龙.app` 选择 **打开**，或在 **系统设置 → 隐私与安全性** 中点击 **仍要打开**。
 

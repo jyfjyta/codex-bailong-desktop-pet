@@ -63,7 +63,7 @@ def disk_image(bundle,work,dist):
     stage=work/'dmg';stage.mkdir()
     subprocess.run(['ditto',str(bundle),str(stage/bundle.name)],check=True)
     (stage/'Applications').symlink_to('/Applications')
-    image=dist/f'{NAME}-{MAC_VERSION}-macos-{platform.machine()}.dmg'
+    image=dist/f'BailongEnhanced-{MAC_VERSION}-macos-{platform.machine()}.dmg'
     subprocess.run(['hdiutil','create','-volname',NAME,'-srcfolder',str(stage),'-fs','HFS+','-format','UDZO',str(image)],check=True)
     subprocess.run(['hdiutil','verify',str(image)],check=True)
     h=hashlib.sha256()
