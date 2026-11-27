@@ -256,9 +256,19 @@ class AntigravityAdapterTests(unittest.TestCase):
             self.assertFalse(any(e['kind'] == 'complete' for e in ev1))
             self.assertEqual(ev1[-1]['state'], 'working')
 
-            # 2) Background task finishes + Stop hook fires, then PreInvocation resumes within settle window -> NO false complete!
+            # 2) Background task finishes via SYSTEM_MESSAGE (Antigravity's real protocol: no second GENERIC DONE!)
+            #    then Stop hook fires + PreInvocation resumes within settle window -> NO false complete!
             with tf.open('a', encoding='utf-8') as f:
-                f.write(json.dumps({'step_index': 2, 'type': 'GENERIC', 'status': 'DONE', 'created_at': _iso_now()}) + '\n')
+                f.write(json.dumps({
+                    'step_index': 4,
+                    'type': 'SYSTEM_MESSAGE',
+                    'status': 'DONE',
+                    'created_at': _iso_now(),
+                    'content': 'Task id "conv-live/task-2" finished with result: OK',
+                }) + '\n')
+            ev_sys = tail.poll()
+            self.assertNotIn('2', tail.running_steps.get('conv-live', set()))
+            self.assertEqual(ev_sys[-1]['state'], 'thinking')
             with hooks_file.open('a', encoding='utf-8') as f:
                 f.write(json.dumps({'ts': time.time(), 'event': 'Stop', 'conversation_id': 'conv-live', 'tool_name': ''}) + '\n')
             ev2 = tail.poll()

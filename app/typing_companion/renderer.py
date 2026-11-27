@@ -227,7 +227,6 @@ class TypingCompanionRenderer:
         self.manual_expr_until = 0.0
         self.click_timestamps: list[float] = []
         self.backspace_timestamps: list[float] = []
-        self._burst_key_count = 0
         self.pet_energy = 0.0
         self.pet_dir_x = 0.0
         self.drowsy = False
@@ -402,7 +401,6 @@ class TypingCompanionRenderer:
         self.manual_expr_until = 0.0
         self.click_timestamps.clear()
         self.backspace_timestamps.clear()
-        self._burst_key_count = 0
         self.pet_dir_x = 0.0
         self.mood_tier = 0
         self.mood_changed_at = now
@@ -543,13 +541,11 @@ class TypingCompanionRenderer:
             self.drowsy = False
             self.sleeping = False
             self.last_input_at = now
-            self._burst_key_count += 1
             if vk in (0x08, 0x2E):  # Backspace / Delete spam -> flustered teary Bailong!
                 self.backspace_timestamps = [t for t in self.backspace_timestamps if now - t < 2.2]
                 self.backspace_timestamps.append(now)
                 if len(self.backspace_timestamps) >= 7:
                     self.backspace_timestamps.clear()
-                    self._burst_key_count = 0
                     self.trigger_flustered(now, 2.4)
 
         pk = self.deck.resolve_vk(vk)

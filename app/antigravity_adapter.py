@@ -31,6 +31,7 @@ HOOK_EVENTS = ('SessionStart', 'PreInvocation', 'PostInvocation', 'PreToolUse', 
 _AGY_FETCH_LOCK = threading.Lock()
 
 _USER_REQ_RE = re.compile(r'<USER_REQUEST>\s*([\s\S]*?)\s*</USER_REQUEST>', re.I)
+_TASK_ID_RE = re.compile(r'task-(\d+)', re.I)
 _RESET_AFTER_RE = re.compile(
     r'quota\s+will\s+reset\s+after\s+(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?',
     re.I,
@@ -1018,8 +1019,19 @@ class AntigravityTail:
             return events
 
         if typ == 'SYSTEM_MESSAGE':
+            content_str = str(obj.get('content') or '')
+            steps = self.running_steps.get(sid)
+            if steps:
+                matched_ids = _TASK_ID_RE.findall(content_str)
+                if matched_ids:
+                    for tid in matched_ids:
+                        steps.discard(tid)
+                elif 'finished' in content_str.lower() or 'completed' in content_str.lower():
+                    steps.clear()
+                if not steps:
+                    self.running_steps.pop(sid, None)
             # System wakeup (e.g. background task finished) means the agent is about to resume reasoning.
-            if not historical and (sid in self.pending_complete or not s.done or self.running_steps.get(sid)):
+            if not historical and (sid in self.pending_complete or not s.done or self.running_steps.get(sid) or 'finished' in content_str.lower()):
                 self.pending_complete.pop(sid, None)
                 s.done = False
                 s.state = 'thinking'
@@ -1274,7 +1286,8 @@ class AntigravityTail:
 
         # Auto-expire stale active sessions if transcript & hooks stopped updating > 300s ago
         for sid, s in list(self.sessions.items()):
-            if not s.done and sid not in self.pending_complete and not self.running_steps.get(sid) and (now_m - s.updated) > 300.0:
+            if not s.done and sid not in self.pending_complete and (now_m - s.updated) > 300.0:
+                self.running_steps.pop(sid, None)
                 s.done = True
                 s.state = 'idle'
                 s.message = '等待 Antigravity 新消息'
