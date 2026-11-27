@@ -48,7 +48,7 @@
 | 平台 | 支持情况 | 底层实现 |
 | --- | --- | --- |
 | **macOS（Apple Silicon, macOS 12+）** | 提供开箱即用 `.dmg` 与源码运行 | CoreGraphics `CGEventTap` 键鼠同步、`IsSecureEventInputEnabled` 密码检测、`pty` 调用 `agy` CLI、钥匙串凭据存储 |
-| **Windows 10 / 11（x64）** | 完整源码适配与打包脚本支持 | Win32 `WH_KEYBOARD_LL` / `WH_MOUSE_LL` 键鼠同步、Win32 + UIA `IsPassword` 密码防窥、PowerShell 原生 Antigravity Hooks、ConPTY 调用 `agy.exe`、高 DPI 逻辑坐标适配 |
+| **Windows 10 / 11（x64）** | 提供开箱即用免安装 `.zip` 与源码运行 | Win32 `WH_KEYBOARD_LL` / `WH_MOUSE_LL` 键鼠同步、Win32 + UIA `IsPassword` 密码防窥、PowerShell 原生 Antigravity Hooks、ConPTY 调用 `agy.exe`、高 DPI 逻辑坐标适配 |
 
 ---
 
@@ -84,6 +84,15 @@ brew install python@3.12
 .venv/bin/python build_macos.py --cards-only --dmg
 ```
 
+### Windows 10 / 11（x64）推荐下载免安装 ZIP
+
+前往 [Releases](https://github.com/jyfjyta/codex-bailong-desktop-pet/releases) 下载最新 Windows 免安装压缩包：
+
+| 文件 | 用法 |
+| --- | --- |
+| `BailongEnhanced-1.0.1-2-windows-x64.zip` | 完整解压后双击目录内的 `BailongEnhanced.exe` 即可运行（无需安装 Python，内置全部打字伴侣资源） |
+| `BailongEnhanced-1.0.1-2-windows-x64.zip.sha256` | 可使用 PowerShell `Get-FileHash BailongEnhanced-1.0.1-2-windows-x64.zip -Algorithm SHA256` 校验完整性 |
+
 ### Windows 10 / 11 从源码运行与打包
 
 ```powershell
@@ -92,11 +101,10 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe app\enhanced.py
 ```
 
-本地打包 Windows 可执行程序或分发包：
+本地打包 Windows 免安装 ZIP：
 
 ```powershell
-# 打包免安装版 / 卡片发布包
-.\.venv\Scripts\python.exe build_release.py --cards-only
+.\.venv\Scripts\python.exe build_windows.py --release-version 1.0.1-2
 ```
 
 > 若希望仅使用上游原版 Windows Codex 桌宠安装包，可直接前往原作者发布页：[Wunsch2048/codex-bailong-desktop-pet Releases](https://github.com/Wunsch2048/codex-bailong-desktop-pet/releases)。

@@ -1,0 +1,147 @@
+name: Build & Publish Cross-Platform Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (e.g. v1.0.1-2)'
+        required: true
+        default: 'v1.0.1-2'
+      release_version:
+        description: 'Artifact version label (e.g. 1.0.1-2)'
+        required: true
+        default: '1.0.1-2'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: app
+      BAILONG_RELEASE_VERSION: ${{ inputs.release_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-enhanced.txt
+      - run: python -m pip install -r requirements-enhanced.txt
+      - run: python -m unittest test_windows_adaptation test_antigravity_linkage test_typing_companion test_release_version
+      - run: python build_windows.py --release-version "${{ inputs.release_version }}"
+      - name: Verify Windows ZIP SHA-256
+        shell: pwsh
+        run: |
+          $dir = Get-ChildItem -Directory release\windows-* | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $zip = Get-ChildItem -Path $dir.FullName -Filter "*.zip" | Select-Object -First 1
+          $sha = Get-ChildItem -Path $dir.FullName -Filter "*.zip.sha256" | Select-Object -First 1
+          $expected = (Get-Content $sha.FullName -Raw).Trim().Split()[0].ToLower()
+          $actual = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "SHA256 mismatch: expected=$expected actual=$actual" }
+          Write-Host "Verified $($zip.Name): $actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: |
+            release/windows-*/*.zip
+            release/windows-*/*.zip.sha256
+
+  build-macos:
+    runs-on: macos-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-enhanced.txt
+      - run: python -m pip install -r requirements-enhanced.txt
+      - run: python -m unittest test_antigravity_linkage test_typing_companion test_windows_adaptation test_release_version
+      - run: python build_macos.py --cards-only --dmg
+      - run: codesign --verify --deep --strict --verbose=2 release/macos-*/*.app
+      - run: cd release/macos-* && shasum -a 256 -c *.dmg.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            release/macos-*/*.dmg
+            release/macos-*/*.dmg.sha256
+
+  publish:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      REL_VER: ${{ inputs.release_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: dist/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release
+          path: dist/macos
+      - name: Create or update GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          WIN_ZIP=$(find dist/windows -name '*.zip' | head -n 1)
+          WIN_SHA=$(find dist/windows -name '*.zip.sha256' | head -n 1)
+          MAC_DMG=$(find dist/macos -name '*.dmg' | head -n 1)
+          MAC_SHA=$(find dist/macos -name '*.dmg.sha256' | head -n 1)
+          WIN_NAME=$(basename "$WIN_ZIP")
+          MAC_NAME=$(basename "$MAC_DMG")
+
+          cat > release-notes.md <<'EOF'
+          ## 项目来源与致谢
+
+          本版本基于原项目 **[Wunsch2048/codex-bailong-desktop-pet](https://github.com/Wunsch2048/codex-bailong-desktop-pet)**（作者：**[Wunsch2048](https://github.com/Wunsch2048)**，演进自 **[jingh12312-rgb/bailong-desktop-pet](https://github.com/jingh12312-rgb/bailong-desktop-pet)**）以及 **[Kki1ds/codex-bailong-desktop-pet](https://github.com/Kki1ds/codex-bailong-desktop-pet)** 的 macOS 社区移植版二次开发。完整授权与素材边界见仓库内 `NOTICE.md`。
+
+          ---
+
+          ## 双端正式版亮点（macOS Apple Silicon + Windows 10/11 x64）
+
+          ### 1. Live2D Q版打字伴侣（已内置全部 47 个静态资源，开箱即用）
+          - 180° 65% 机械键盘与鼠标垫实时同步真实按键与屏幕光标（纯被动监听，不记录按键内容）。
+          - 丰富互动：摸头开心笑眼、**单击不重复随机切换 5 种俏皮表情**（委屈泪目 / Wink / 傲娇得意 / 开心大笑 / 星星眼）、狂按退格 7 次 / 快速拖拽晃动 / 连续敲击 18+ 键停手 0.9 秒（50% 概率）触发奶凶生气、输密码自动捂眼防窥、AI 任务完成冒星星眼、闲置打瞌睡。
+
+          ### 2. Codex ↔ Antigravity 双源联动 + `agy` CLI 实时 4 项额度同步
+          - 设置页顶部一键切换 **Codex** 与 **Antigravity Desktop**；
+          - 接入 Antigravity 本机日志与官方 Hooks（带 2.5 秒防抖与后台运行任务追踪，彻底解决思考/执行中误报已完成或卡在执行中的问题）；
+          - 后台静默调用官方 `agy` CLI `statusLine` 获取真实 4 项剩余百分比（Gemini 5小时/一周 + Claude & GPT 5小时/一周，不发对话不扣 Token）。
+
+          ---
+
+          ## 安装方式
+
+          ### Windows 10 / 11（x64 免安装版）
+          1. 下载 `__WIN_NAME__` 并完整解压到任意目录；
+          2. 双击目录内的 `BailongEnhanced.exe` 即可直接运行（无需安装 Python，内置完整打字伴侣资源）；
+          3. 如需经典全尺寸白龙动画，可在应用内 **设置 → 角色与素材** 按需下载。
+
+          ### macOS（Apple Silicon, macOS 12+）
+          1. 下载 `__MAC_NAME__` 与 `.sha256` 校验文件；
+          2. 双击打开 DMG，将 `小白龙.app` 拖入 `Applications` 文件夹；
+          3. 首次打开若提示无法验证开发者（ad-hoc 签名未公证），在 Finder 中右键 `小白龙.app` 选择 **打开**，或在 **系统设置 → 隐私与安全性** 点击 **仍要打开**。
+          EOF
+          sed -i "s|__WIN_NAME__|${WIN_NAME}|g; s|__MAC_NAME__|${MAC_NAME}|g" release-notes.md
+
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber "$WIN_ZIP" "$WIN_SHA" "$MAC_DMG" "$MAC_SHA" --repo "${{ github.repository }}"
+            gh release edit "$TAG" --title "${TAG} · macOS & Windows 双端正式版（打字伴侣 + Antigravity 实时额度）" --notes-file release-notes.md --latest --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" "$WIN_ZIP" "$WIN_SHA" "$MAC_DMG" "$MAC_SHA" \
+              --repo "${{ github.repository }}" \
+              --title "${TAG} · macOS & Windows 双端正式版（打字伴侣 + Antigravity 实时额度）" \
+              --notes-file release-notes.md \
+              --latest
+          fi
