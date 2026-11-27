@@ -106,13 +106,17 @@ class TypingCompanionTests(unittest.TestCase):
 
         r.reset_transient(5.0)
         click_pool = {'flustered', 'wink', 'smug', 'happy', 'starry'}
-        first_click = r.on_pet_click(5.02)
-        self.assertIn(first_click, click_pool)
-        self.assertEqual(r.choose_expression(5.10), first_click)
-        second_click = r.on_pet_click(5.20)
-        self.assertIn(second_click, click_pool)
-        self.assertNotEqual(second_click, first_click)
-        self.assertEqual(r.choose_expression(5.25), second_click)
+        seen_clicks = set()
+        prev_click = None
+        for idx in range(40):
+            t_c = 5.02 + idx * 0.04
+            got = r.on_pet_click(t_c)
+            self.assertIn(got, click_pool)
+            self.assertNotEqual(got, prev_click)
+            self.assertEqual(r.choose_expression(t_c + 0.01), got)
+            seen_clicks.add(got)
+            prev_click = got
+        self.assertEqual(seen_clicks, click_pool)
 
         r.reset_transient(7.0)
         r.trigger_celebrate(7.02, 2.5)

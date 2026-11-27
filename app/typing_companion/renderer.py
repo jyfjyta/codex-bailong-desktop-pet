@@ -511,7 +511,7 @@ class TypingCompanionRenderer:
         chosen = random.choice(choices)
         self._last_click_expr = chosen
         # Clear previous transient expression timers so every click immediately shows the newly rolled reaction.
-        self.angry_until = self.flustered_until = self.starry_until = 0.0
+        self.angry_until = self.flustered_until = self.starry_until = self.celebrate_until = 0.0
         self.happy_until = self.wink_until = self.smug_until = 0.0
         self.pet_energy = 0.0
         if chosen == 'flustered':
@@ -523,7 +523,7 @@ class TypingCompanionRenderer:
         elif chosen == 'happy':
             self.trigger_happy(now, 2.2)
         else:
-            self.trigger_starry(now, 2.2)
+            self.trigger_celebrate(now, 2.2)
         return chosen
 
     def on_head_stroke(self, dx: float, dy: float, now: float) -> bool:
