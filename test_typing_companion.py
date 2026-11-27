@@ -97,16 +97,22 @@ class TypingCompanionTests(unittest.TestCase):
         self.assertLess(math.hypot(r.left_paw.x - enter_c.x(), r.left_paw.y - enter_c.y()), 6.0)
         self.assertLess(math.hypot(r.right_paw.x - esc_c.x(), r.right_paw.y - esc_c.y()), 8.0)
 
-        # 3) Full KuroCat interactive expression suite: headpat -> happy (B), click -> angry (💢),
-        #    Codex complete -> starry, Backspace spam -> flustered, idle 40s -> sleepy,
+        # 3) Full KuroCat interactive expression suite: headpat -> happy (B), click -> random pool (no immediate repeat),
+        #    Codex complete -> starry, Backspace spam -> angry (💢), idle 40s -> sleepy,
         #    typing >= 20 keys + pause stays calm idle (NO auto smug!), privacy -> shy!
         r.reset_transient(4.0)
         r.on_head_stroke(30.0, 0.0, 4.02)
         self.assertEqual(r.choose_expression(4.05), 'happy')
 
         r.reset_transient(5.0)
-        self.assertEqual(r.on_pet_click(5.02), 'angry')
-        self.assertEqual(r.choose_expression(5.10), 'angry')
+        click_pool = {'flustered', 'wink', 'smug', 'happy', 'starry'}
+        first_click = r.on_pet_click(5.02)
+        self.assertIn(first_click, click_pool)
+        self.assertEqual(r.choose_expression(5.10), first_click)
+        second_click = r.on_pet_click(5.20)
+        self.assertIn(second_click, click_pool)
+        self.assertNotEqual(second_click, first_click)
+        self.assertEqual(r.choose_expression(5.25), second_click)
 
         r.reset_transient(7.0)
         r.trigger_celebrate(7.02, 2.5)
@@ -115,7 +121,7 @@ class TypingCompanionTests(unittest.TestCase):
         r.reset_transient(8.0)
         for i in range(7):
             r.on_key_down(0x08, 8.0 + i * 0.12)
-        self.assertEqual(r.choose_expression(8.90), 'flustered')
+        self.assertEqual(r.choose_expression(8.90), 'angry')
 
         r.reset_transient(10.0)
         r.next_blink_at = 999.0

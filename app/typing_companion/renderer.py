@@ -504,9 +504,27 @@ class TypingCompanionRenderer:
             self.bob_spring.kick(-10.0)
 
     def on_pet_click(self, now: float) -> str:
-        """Single click directly pokes Bailong -> cute pouty Angry (💢)!"""
-        self.trigger_angry(now, 2.4)
-        return 'angry'
+        """Single click pokes Bailong -> random playful expression (flustered, wink, smug, happy, starry) without immediate repeats!"""
+        pool = ('flustered', 'wink', 'smug', 'happy', 'starry')
+        last = getattr(self, '_last_click_expr', None)
+        choices = [e for e in pool if e != last] or list(pool)
+        chosen = random.choice(choices)
+        self._last_click_expr = chosen
+        # Clear previous transient expression timers so every click immediately shows the newly rolled reaction.
+        self.angry_until = self.flustered_until = self.starry_until = 0.0
+        self.happy_until = self.wink_until = self.smug_until = 0.0
+        self.pet_energy = 0.0
+        if chosen == 'flustered':
+            self.trigger_flustered(now, 2.4)
+        elif chosen == 'wink':
+            self.trigger_wink(now, 2.1)
+        elif chosen == 'smug':
+            self.trigger_smug(now, 2.2)
+        elif chosen == 'happy':
+            self.trigger_happy(now, 2.2)
+        else:
+            self.trigger_starry(now, 2.2)
+        return chosen
 
     def on_head_stroke(self, dx: float, dy: float, now: float) -> bool:
         dist = math.hypot(dx, dy)
@@ -515,9 +533,10 @@ class TypingCompanionRenderer:
         self._wake_up(now)
         prev = self.pet_energy
         self.pet_energy = min(1.0, self.pet_energy + dist * 0.010)
-        # Sustained gentle head-petting soothes her back to happy without 2px post-click jitter cancelling angry
+        # Sustained gentle head-petting soothes her back to happy without 2px post-click jitter cancelling reactions
         if self.pet_energy > 0.35:
             self.angry_until = 0.0
+            self.flustered_until = 0.0
         self.pet_dir_x = max(-1.0, min(1.0, self.pet_dir_x * 0.82 + (dx / max(4.0, dist)) * 0.35))
         if self.pet_energy > 0.28 and random.random() < 0.12:
             hx = random.uniform(44.0, 56.0) if random.random() < 0.5 else random.uniform(222.0, 236.0)
@@ -541,12 +560,12 @@ class TypingCompanionRenderer:
             self.drowsy = False
             self.sleeping = False
             self.last_input_at = now
-            if vk in (0x08, 0x2E):  # Backspace / Delete spam -> flustered teary Bailong!
+            if vk in (0x08, 0x2E):  # Backspace / Delete spam -> cute pouty angry Bailong (💢)!
                 self.backspace_timestamps = [t for t in self.backspace_timestamps if now - t < 2.2]
                 self.backspace_timestamps.append(now)
                 if len(self.backspace_timestamps) >= 7:
                     self.backspace_timestamps.clear()
-                    self.trigger_flustered(now, 2.4)
+                    self.trigger_angry(now, 2.6)
 
         pk = self.deck.resolve_vk(vk)
         if pk is None:

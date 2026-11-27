@@ -171,7 +171,7 @@ class TypingCompanionController(QObject):
         if not self.active or self._paused:
             return
         now = time.perf_counter()
-        self.renderer.trigger_flustered(now, 2.4)
+        self.renderer.trigger_angry(now, 2.6)
         self._ensure_fast_clock()
         self.pet.update()
 
