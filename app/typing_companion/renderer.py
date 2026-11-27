@@ -350,7 +350,7 @@ class TypingCompanionRenderer:
             return 'angry'
         if now < self.flustered_until:
             return 'flustered'
-        if now < self.starry_until or now < self.celebrate_until or self.mood_tier == 2:
+        if now < self.starry_until or now < self.celebrate_until:
             return 'starry'
         if self.pet_energy > 0.22 or now < self.happy_until:
             return 'happy'
@@ -821,7 +821,7 @@ class TypingCompanionRenderer:
             self._next_zzz_at = now + (2.1 if self.sleeping else 2.6)
             self._spawn_particle('zzz', 210.0, 56.0)
 
-        if self._burst_key_count > 0 and not self.pressed_keys and (now - self.last_key_at) >= 0.9:
+        if self._burst_key_count > 0 and (now - self.last_key_at) >= 0.9:
             count = self._burst_key_count
             self._burst_key_count = 0
             if count >= 18 and not self.privacy_mode and random.random() < 0.50:
@@ -849,10 +849,6 @@ class TypingCompanionRenderer:
         elif self.mood_tier == 2 and self.typing_heat < 0.50 and dwell > 2.2:
             self.mood_tier = 1
             self.mood_changed_at = now
-
-        if self.mood_tier == 2 and not self.privacy_mode and random.random() < 0.03:
-            hx = random.uniform(44.0, 56.0) if random.random() < 0.5 else random.uniform(222.0, 236.0)
-            self._spawn_particle('heart', hx, random.uniform(62.0, 78.0))
 
         self.pet_energy *= math.exp(-1.35 * dt)
         if self.pet_energy < 0.05:

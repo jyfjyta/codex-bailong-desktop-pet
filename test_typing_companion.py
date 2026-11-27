@@ -127,27 +127,29 @@ class TypingCompanionTests(unittest.TestCase):
             r.on_key_down(0x08, 8.0 + i * 0.12)
         self.assertEqual(r.choose_expression(8.90), 'angry')
 
-        # 18+ continuous key burst + 0.9s pause -> 50% chance cute pouty angry (💢), otherwise calm idle
+        # Sustained fast typing must stay calm idle (never auto starry/happy), and after 0.9s pause -> 50% angry
         from unittest.mock import patch
         r.reset_transient(10.0)
         r.next_blink_at = 999.0
-        for i in range(19):
-            t_k = 10.0 + i * 0.05
+        for i in range(40):
+            t_k = 10.0 + i * 0.08
             r.on_key_down(0x44, t_k)
-            r.on_key_up(0x44, t_k + 0.02)
+            r.on_key_up(0x44, t_k + 0.03)
+            r.step(t_k + 0.04, 0.04)
+        self.assertEqual(r.choose_expression(13.25), 'idle')
         with patch('typing_companion.renderer.random.random', return_value=0.25):
-            r.step(12.0, 0.016)
-        self.assertEqual(r.choose_expression(12.0), 'angry')
+            r.step(14.2, 0.016)
+        self.assertEqual(r.choose_expression(14.2), 'angry')
 
-        r.reset_transient(12.5)
+        r.reset_transient(15.0)
         r.next_blink_at = 999.0
         for i in range(19):
-            t_k = 12.5 + i * 0.05
+            t_k = 15.0 + i * 0.05
             r.on_key_down(0x44, t_k)
             r.on_key_up(0x44, t_k + 0.02)
         with patch('typing_companion.renderer.random.random', return_value=0.75):
-            r.step(14.5, 0.016)
-        self.assertEqual(r.choose_expression(14.5), 'idle')
+            r.step(17.0, 0.016)
+        self.assertEqual(r.choose_expression(17.0), 'idle')
 
         r.reset_transient(14.0)
         r.next_blink_at = 999.0
