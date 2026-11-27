@@ -21,6 +21,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONPATH: app
+      PYTHONUTF8: '1'
       BAILONG_RELEASE_VERSION: ${{ inputs.release_version }}
     steps:
       - uses: actions/checkout@v4
