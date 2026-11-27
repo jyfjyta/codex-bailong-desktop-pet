@@ -227,6 +227,7 @@ class TypingCompanionRenderer:
         self.manual_expr_until = 0.0
         self.click_timestamps: list[float] = []
         self.backspace_timestamps: list[float] = []
+        self._burst_key_count = 0
         self.pet_energy = 0.0
         self.pet_dir_x = 0.0
         self.drowsy = False
@@ -401,6 +402,7 @@ class TypingCompanionRenderer:
         self.manual_expr_until = 0.0
         self.click_timestamps.clear()
         self.backspace_timestamps.clear()
+        self._burst_key_count = 0
         self.pet_dir_x = 0.0
         self.mood_tier = 0
         self.mood_changed_at = now
@@ -560,11 +562,14 @@ class TypingCompanionRenderer:
             self.drowsy = False
             self.sleeping = False
             self.last_input_at = now
+            if not repeat:
+                self._burst_key_count += 1
             if vk in (0x08, 0x2E):  # Backspace / Delete spam -> cute pouty angry Bailong (💢)!
                 self.backspace_timestamps = [t for t in self.backspace_timestamps if now - t < 2.2]
                 self.backspace_timestamps.append(now)
                 if len(self.backspace_timestamps) >= 7:
                     self.backspace_timestamps.clear()
+                    self._burst_key_count = 0
                     self.trigger_angry(now, 2.6)
 
         pk = self.deck.resolve_vk(vk)
@@ -815,6 +820,12 @@ class TypingCompanionRenderer:
         if (self.sleeping or self.drowsy) and now >= self._next_zzz_at:
             self._next_zzz_at = now + (2.1 if self.sleeping else 2.6)
             self._spawn_particle('zzz', 210.0, 56.0)
+
+        if self._burst_key_count > 0 and not self.pressed_keys and (now - self.last_key_at) >= 0.9:
+            count = self._burst_key_count
+            self._burst_key_count = 0
+            if count >= 18 and not self.privacy_mode and random.random() < 0.50:
+                self.trigger_angry(now, 2.4)
 
         cutoff = now - 2.5
         while self.key_timestamps and self.key_timestamps[0] < cutoff:
