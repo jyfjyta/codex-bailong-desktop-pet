@@ -47,7 +47,7 @@ class AntigravityAdapterTests(unittest.TestCase):
             tf.write_text('', encoding='utf-8')
             hooks_file = Path(tmp) / 'events.jsonl'
 
-            tail = ag.AntigravityTail(home=root, hooks_file=hooks_file)
+            tail = ag.AntigravityTail(home=root, hooks_file=hooks_file, complete_settle_seconds=0.0)
             self.assertEqual(tail.poll(), [])  # seed empty
 
             lines = [
@@ -117,7 +117,7 @@ class AntigravityAdapterTests(unittest.TestCase):
             root = Path(tmp) / 'ag'
             (root / 'brain').mkdir(parents=True, exist_ok=True)
             hooks_file = Path(tmp) / 'antigravity-events.jsonl'
-            tail = ag.AntigravityTail(home=root, hooks_file=hooks_file)
+            tail = ag.AntigravityTail(home=root, hooks_file=hooks_file, complete_settle_seconds=0.0)
             tail.poll()  # seed
 
             recs = [
@@ -223,6 +223,90 @@ class AntigravityAdapterTests(unittest.TestCase):
 
                 groups = ag.read_antigravity_all_groups()
                 self.assertEqual(set(groups.keys()), {'gemini', '3p'})
+
+    def test_intermediate_stop_and_background_running_never_emit_false_complete(self):
+        from status_indicator import StatusIndicator
+        from conversation_roster import ConversationRoster
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'ag'
+            tf = root / 'brain' / 'conv-live' / '.system_generated' / 'logs' / 'transcript.jsonl'
+            tf.parent.mkdir(parents=True, exist_ok=True)
+            tf.write_text('', encoding='utf-8')
+            # Register a subagent that must be ignored
+            sub_meta = root / 'brain' / 'conv-live' / '.system_generated' / 'subagents' / 'sub-999.json'
+            sub_meta.parent.mkdir(parents=True, exist_ok=True)
+            sub_meta.write_text('{}', encoding='utf-8')
+            sub_tf = root / 'brain' / 'sub-999' / '.system_generated' / 'logs' / 'transcript.jsonl'
+            sub_tf.parent.mkdir(parents=True, exist_ok=True)
+            sub_tf.write_text('', encoding='utf-8')
+
+            hooks_file = Path(tmp) / 'antigravity-events.jsonl'
+            tail = ag.AntigravityTail(home=root, hooks_file=hooks_file, complete_settle_seconds=0.12)
+            tail.poll()  # seed
+
+            # 1) Background GENERIC step is RUNNING, then interim PLANNER_RESPONSE(DONE, tools=[]) arrives -> must NOT complete!
+            with tf.open('a', encoding='utf-8') as f:
+                f.write('\n'.join([
+                    json.dumps({'step_index': 1, 'type': 'USER_INPUT', 'status': 'DONE', 'created_at': _iso_now(-3), 'content': '打包并发布'}),
+                    json.dumps({'step_index': 2, 'type': 'GENERIC', 'status': 'RUNNING', 'created_at': _iso_now(-2), 'content': 'building...'}),
+                    json.dumps({'step_index': 3, 'type': 'PLANNER_RESPONSE', 'status': 'DONE', 'created_at': _iso_now(-1), 'content': '正在上传中...'}),
+                ]) + '\n')
+            ev1 = tail.poll()
+            self.assertFalse(any(e['kind'] == 'complete' for e in ev1))
+            self.assertEqual(ev1[-1]['state'], 'working')
+
+            # 2) Background task finishes + Stop hook fires, then PreInvocation resumes within settle window -> NO false complete!
+            with tf.open('a', encoding='utf-8') as f:
+                f.write(json.dumps({'step_index': 2, 'type': 'GENERIC', 'status': 'DONE', 'created_at': _iso_now()}) + '\n')
+            with hooks_file.open('a', encoding='utf-8') as f:
+                f.write(json.dumps({'ts': time.time(), 'event': 'Stop', 'conversation_id': 'conv-live', 'tool_name': ''}) + '\n')
+            ev2 = tail.poll()
+            self.assertFalse(any(e['kind'] == 'complete' for e in ev2))
+            self.assertIn('conv-live', tail.pending_complete)
+
+            with hooks_file.open('a', encoding='utf-8') as f:
+                f.write(json.dumps({'ts': time.time(), 'event': 'PreInvocation', 'conversation_id': 'conv-live', 'tool_name': ''}) + '\n')
+            ev3 = tail.poll()
+            self.assertNotIn('conv-live', tail.pending_complete)
+            self.assertEqual(ev3[-1]['state'], 'thinking')
+            self.assertTrue(ev3[-1]['clear_unread'])
+
+            # 3) Subagent transcript completion is completely ignored
+            with sub_tf.open('a', encoding='utf-8') as f:
+                f.write('\n'.join([
+                    json.dumps({'step_index': 1, 'type': 'USER_INPUT', 'status': 'DONE', 'created_at': _iso_now()}),
+                    json.dumps({'step_index': 2, 'type': 'PLANNER_RESPONSE', 'status': 'DONE', 'created_at': _iso_now()}),
+                ]) + '\n')
+            self.assertEqual(tail.poll(), [])
+
+            # 4) Genuine final Stop settles after complete_settle_seconds -> emits complete
+            with hooks_file.open('a', encoding='utf-8') as f:
+                f.write(json.dumps({'ts': time.time(), 'event': 'Stop', 'conversation_id': 'conv-live', 'tool_name': ''}) + '\n')
+            self.assertEqual(tail.poll(), [])
+            time.sleep(0.16)
+            ev4 = tail.poll()
+            self.assertTrue(any(e['kind'] == 'complete' for e in ev4))
+
+            # 5) StatusIndicator + Roster immediately clear unread & show busy when the session resumes working!
+            ind = StatusIndicator()
+            roster = ConversationRoster()
+            comp = next(e for e in ev4 if e['kind'] == 'complete')
+            ind.notify_complete(comp)
+            roster.observe(comp)
+            self.assertEqual(ind.visual(), 'attention')
+
+            with hooks_file.open('a', encoding='utf-8') as f:
+                f.write(json.dumps({'ts': time.time(), 'event': 'PreInvocation', 'conversation_id': 'conv-live', 'tool_name': ''}) + '\n')
+            ev5 = tail.poll()
+            for e in ev5:
+                ind.observe(e)
+                roster.observe(e)
+            self.assertEqual(ind.unread, [])
+            self.assertEqual(ind.visual(), 'busy')
+            chosen, extra = roster.selection(ind.unread)
+            self.assertEqual(chosen[0]['state'], 'thinking')
+            self.assertEqual(extra, 0)
 
 
 class DualProviderUiTests(unittest.TestCase):

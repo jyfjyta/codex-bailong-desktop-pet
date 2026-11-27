@@ -877,17 +877,57 @@ def read_antigravity_quota(
 class AntigravityTail:
     """Read-only tailer combining ~/.gemini/antigravity/brain/*/transcript.jsonl & official Hooks events."""
 
-    def __init__(self, home: str | Path | None = None, hooks_file: Path | None = None) -> None:
+    def __init__(
+        self,
+        home: str | Path | None = None,
+        hooks_file: Path | None = None,
+        complete_settle_seconds: float = 2.5,
+    ) -> None:
         self.home = antigravity_home(home)
         self.hooks_file = hooks_file or hook_events_path()
+        self.complete_settle_seconds = max(0.0, float(complete_settle_seconds))
         self.offsets: dict[str, int] = {}
         self.hook_offset = 0
         self.sessions: dict[str, Session] = {}
+        self.running_steps: dict[str, set[str]] = {}
+        self.pending_complete: dict[str, tuple[float, str, str, str]] = {}
+        self.subagent_ids: set[str] = set()
+        self._subagent_scan_at = 0.0
+        self.last_active_wall = 0.0
         self.seeded = False
         self.files: list[Path] = []
         self.health = sample('unknown', 'starting')
 
-    def _status_event(self, sid: str, s: Session, activity: str = 'commentary', turn_started: bool = False) -> dict:
+    def _refresh_subagents(self, now_m: float) -> set[str]:
+        if now_m - self._subagent_scan_at < 15.0 and self._subagent_scan_at > 0:
+            return self.subagent_ids
+        self._subagent_scan_at = now_m
+        found: set[str] = set()
+        roots = [self.home / 'brain']
+        default_home = (Path.home() / '.gemini' / 'antigravity').resolve()
+        if self.home == default_home:
+            cli_brain = (Path.home() / '.gemini' / 'antigravity-cli' / 'brain').resolve()
+            if cli_brain.is_dir() and cli_brain not in roots:
+                roots.append(cli_brain)
+        for brain in roots:
+            if not brain.is_dir():
+                continue
+            try:
+                for p in brain.glob('*/.system_generated/subagents/*.json'):
+                    found.add(p.stem)
+            except OSError:
+                continue
+        self.subagent_ids = found
+        return found
+
+    def _status_event(
+        self,
+        sid: str,
+        s: Session,
+        activity: str = 'commentary',
+        turn_started: bool = False,
+        clear_unread: bool = False,
+    ) -> dict:
         return dict(
             kind='status',
             session=sid,
@@ -902,18 +942,51 @@ class AntigravityTail:
             waiting=0,
             user_message=turn_started,
             turn_started=turn_started,
+            clear_unread=clear_unread or turn_started or s.state in ('thinking', 'working', 'responding'),
             active=sum(not x.done for x in self.sessions.values()),
         )
 
+    def _schedule_complete(self, sid: str, s: Session, turn_key: str, message: str, now_m: float) -> list[dict]:
+        """Debounce completion so intermediate yields / background-wait pauses never flash false '已完成'."""
+        if self.running_steps.get(sid):
+            s.done = False
+            s.state = 'working'
+            s.message = '后台任务执行中…'
+            s.display = '后台任务执行中'
+            return [self._status_event(sid, s, activity='tool', clear_unread=True)]
+        if self.complete_settle_seconds <= 0.0:
+            return self._commit_complete(sid, s, turn_key, message)
+        self.pending_complete[sid] = (now_m, turn_key, s.title, message)
+        return []
+
+    def _commit_complete(self, sid: str, s: Session, turn_key: str, message: str) -> list[dict]:
+        was_active = not s.done
+        s.done = True
+        s.state = 'complete'
+        s.message = message
+        s.display = '任务已完成'
+        if not was_active:
+            return []
+        return [
+            dict(kind='complete', session=sid, turn=turn_key, title=s.title, text=s.message),
+            self._status_event(sid, s, activity='commentary'),
+        ]
+
     def _apply_transcript_line(self, sid: str, obj: dict, historical: bool) -> list[dict]:
+        if sid in self.subagent_ids:
+            return []
         s = self.sessions.setdefault(sid, Session(title='Antigravity 对话', message='等待 Antigravity 新消息'))
-        s.updated = time.monotonic()
+        now_m = time.monotonic()
+        s.updated = now_m
         typ = str(obj.get('type') or '')
         status = str(obj.get('status') or '')
+        step_key = str(obj.get('step_index', ''))
         stamp = safe_time(obj.get('created_at'))
         events: list[dict] = []
 
         if typ == 'USER_INPUT':
+            self.pending_complete.pop(sid, None)
+            self.running_steps.pop(sid, None)
             title = _extract_user_title(str(obj.get('content') or ''))
             if title:
                 s.title = title
@@ -923,12 +996,43 @@ class AntigravityTail:
             s.message = ('正在处理：' + s.title) if title else '收到任务，正在思考…'
             s.display = '正在思考'
             if not historical:
-                events.append(self._status_event(sid, s, activity='thinking', turn_started=True))
+                self.last_active_wall = max(self.last_active_wall, time.time())
+                events.append(self._status_event(sid, s, activity='thinking', turn_started=True, clear_unread=True))
+            return events
+
+        if typ == 'GENERIC':
+            if step_key:
+                steps = self.running_steps.setdefault(sid, set())
+                if status == 'RUNNING':
+                    steps.add(step_key)
+                    self.pending_complete.pop(sid, None)
+                    s.done = False
+                    s.state = 'working'
+                    s.message = '后台任务执行中…'
+                    s.display = '后台任务执行中'
+                    if not historical:
+                        self.last_active_wall = max(self.last_active_wall, time.time())
+                        events.append(self._status_event(sid, s, activity='tool', clear_unread=True))
+                elif status in ('DONE', 'ERROR', 'FAILED', 'CANCELLED'):
+                    steps.discard(step_key)
+            return events
+
+        if typ == 'SYSTEM_MESSAGE':
+            # System wakeup (e.g. background task finished) means the agent is about to resume reasoning.
+            if not historical and (sid in self.pending_complete or not s.done or self.running_steps.get(sid)):
+                self.pending_complete.pop(sid, None)
+                s.done = False
+                s.state = 'thinking'
+                s.message = '收到系统事件，正在继续处理…'
+                s.display = '正在继续处理'
+                self.last_active_wall = max(self.last_active_wall, time.time())
+                events.append(self._status_event(sid, s, activity='thinking', clear_unread=True))
             return events
 
         if typ == 'PLANNER_RESPONSE':
             tool_calls = obj.get('tool_calls') or []
             if isinstance(tool_calls, list) and tool_calls:
+                self.pending_complete.pop(sid, None)
                 kinds: list[str] = []
                 for tc in tool_calls:
                     if isinstance(tc, dict):
@@ -941,21 +1045,23 @@ class AntigravityTail:
                 s.message = label
                 s.display = label
                 if not historical:
-                    events.append(self._status_event(sid, s, activity=(kinds[0] if kinds else 'tool')))
+                    self.last_active_wall = max(self.last_active_wall, time.time())
+                    events.append(self._status_event(sid, s, activity=(kinds[0] if kinds else 'tool'), clear_unread=True))
                 return events
 
             if status == 'DONE':
-                was_active = not s.done
-                s.done = True
-                s.state = 'complete'
-                s.message = '任务已完成，可以查看 Antigravity 回复啦。'
-                s.display = '任务已完成'
-                if not historical and was_active:
-                    events.append(dict(kind='complete', session=sid, turn=s.turn, title=s.title, text=s.message))
-                    events.append(self._status_event(sid, s, activity='commentary'))
-                return events
+                if historical:
+                    s.done = True
+                    s.state = 'complete'
+                    s.message = '任务已完成，可以查看 Antigravity 回复啦。'
+                    s.display = '任务已完成'
+                    return events
+                turn_key = s.turn or step_key or str(stamp)
+                return self._schedule_complete(sid, s, turn_key, '任务已完成，可以查看 Antigravity 回复啦。', now_m)
 
             if status in ('ERROR', 'FAILED', 'CANCELLED'):
+                self.pending_complete.pop(sid, None)
+                self.running_steps.pop(sid, None)
                 s.done = True
                 s.state = 'interrupted'
                 s.message = 'Antigravity 任务中断或出错'
@@ -992,6 +1098,7 @@ class AntigravityTail:
             return []
 
         events: list[dict] = []
+        now_m = time.monotonic()
         try:
             with self.hooks_file.open('rb') as f:
                 f.seek(self.hook_offset)
@@ -1005,44 +1112,87 @@ class AntigravityTail:
                         continue
                     ev = str(rec.get('event') or '')
                     sid = str(rec.get('conversation_id') or 'antigravity-hook')
+                    if sid in self.subagent_ids:
+                        continue
                     s = self.sessions.setdefault(sid, Session(title='Antigravity 对话', message='等待 Antigravity 新消息'))
-                    s.updated = time.monotonic()
+                    s.updated = now_m
                     if ev in ('SessionStart', 'PreInvocation'):
+                        self.pending_complete.pop(sid, None)
                         s.done = False
                         s.state = 'thinking'
                         s.message = 'Antigravity 正在思考…'
                         s.display = '正在思考'
-                        events.append(self._status_event(sid, s, activity='thinking', turn_started=(ev == 'SessionStart')))
+                        self.last_active_wall = max(self.last_active_wall, time.time())
+                        events.append(self._status_event(sid, s, activity='thinking', turn_started=(ev == 'SessionStart'), clear_unread=True))
                     elif ev == 'PreToolUse':
+                        self.pending_complete.pop(sid, None)
                         tool = str(rec.get('tool_name') or 'tool')
                         kinds = operation_kinds({'name': tool}) or ['tool']
                         s.done = False
                         s.state = 'working'
                         s.message = operation_label(kinds, finished=False)
                         s.display = s.message
-                        events.append(self._status_event(sid, s, activity=kinds[0]))
+                        self.last_active_wall = max(self.last_active_wall, time.time())
+                        events.append(self._status_event(sid, s, activity=kinds[0], clear_unread=True))
                     elif ev == 'PostToolUse':
+                        self.pending_complete.pop(sid, None)
                         tool = str(rec.get('tool_name') or 'tool')
                         kinds = operation_kinds({'name': tool}) or ['tool']
                         s.done = False
                         s.state = 'working'
                         s.message = operation_label(kinds, finished=True)
                         s.display = s.message
-                        events.append(self._status_event(sid, s, activity=kinds[0]))
+                        self.last_active_wall = max(self.last_active_wall, time.time())
+                        events.append(self._status_event(sid, s, activity=kinds[0], clear_unread=True))
                     elif ev == 'Stop':
-                        was_active = not s.done
-                        s.done = True
-                        s.state = 'complete'
-                        s.message = 'Antigravity 任务已完成'
-                        s.display = '任务已完成'
-                        if was_active:
-                            events.append(dict(kind='complete', session=sid, turn=s.turn or str(rec.get('ts', '')), title=s.title, text=s.message))
-                        events.append(self._status_event(sid, s))
+                        turn_key = s.turn or str(rec.get('ts', ''))
+                        events.extend(self._schedule_complete(sid, s, turn_key, 'Antigravity 任务已完成', now_m))
         except OSError:
             pass
         return events
 
+    def stale_unread_keys(self, pending: list[list[str]], max_idle_seconds: float = 600.0) -> list[tuple[str, str]]:
+        """Return unread (session, turn) entries that should be auto-cleared for Antigravity.
+
+        Because Antigravity Desktop has no read-receipt file like Codex, we clear:
+          1. Any session currently active again (resumed working/thinking);
+          2. Any known subagent conversation;
+          3. Any old Antigravity conversation whose transcript is idle > max_idle_seconds
+             once newer Antigravity activity has occurred (or whose transcript is gone).
+        """
+        if not pending:
+            return []
+        now_w = time.time()
+        known_mtime: dict[str, float] = {}
+        for tf in self.files:
+            try:
+                known_mtime[tf.parents[2].name] = tf.stat().st_mtime
+            except OSError:
+                continue
+        seen: list[tuple[str, str]] = []
+        for pair in pending:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                continue
+            sid, turn = str(pair[0]), str(pair[1])
+            if not sid or not turn:
+                continue
+            s = self.sessions.get(sid)
+            if sid in self.subagent_ids:
+                seen.append((sid, turn))
+                continue
+            if s is not None and not s.done:
+                seen.append((sid, turn))
+                continue
+            mtime = known_mtime.get(sid)
+            if mtime is not None:
+                idle_age = now_w - mtime
+                if idle_age > max_idle_seconds:
+                    seen.append((sid, turn))
+        return seen
+
     def poll(self) -> list[dict]:
+        now_m = time.monotonic()
+        self._refresh_subagents(now_m)
         files = _discover_transcripts(self.home, limit=16)
         self.files = files
         events: list[dict] = []
@@ -1050,9 +1200,13 @@ class AntigravityTail:
 
         for tf in files:
             sid = tf.parents[2].name
+            if sid in self.subagent_ids:
+                continue
             key = str(tf)
             try:
-                size = tf.stat().st_size
+                st = tf.stat()
+                size = st.st_size
+                mtime = st.st_mtime
             except OSError:
                 continue
             offset = self.offsets.get(key)
@@ -1074,6 +1228,10 @@ class AntigravityTail:
                                 continue
                             events.extend(self._apply_transcript_line(sid, obj, historical=True))
                         self.offsets[key] = f.tell()
+                    # If this session is actively running right now on startup, immediately surface its live state!
+                    s = self.sessions.get(sid)
+                    if s is not None and not s.done and (time.time() - mtime) < 180.0:
+                        events.append(self._status_event(sid, s, activity='thinking' if s.state == 'thinking' else 'tool', clear_unread=True))
                 except OSError:
                     continue
                 continue
@@ -1101,10 +1259,22 @@ class AntigravityTail:
         events.extend(self._poll_hooks())
         self.seeded = True
 
-        # Auto-expire stale active sessions if transcript stopped updating > 120s ago
+        # Flush debounced completions whose settle window elapsed without resumed work
         now_m = time.monotonic()
+        for sid, item in list(self.pending_complete.items()):
+            queued_at, turn_key, _title, message = item
+            if self.running_steps.get(sid):
+                self.pending_complete.pop(sid, None)
+                continue
+            if now_m - queued_at >= self.complete_settle_seconds:
+                self.pending_complete.pop(sid, None)
+                s = self.sessions.get(sid)
+                if s is not None:
+                    events.extend(self._commit_complete(sid, s, turn_key, message))
+
+        # Auto-expire stale active sessions if transcript & hooks stopped updating > 300s ago
         for sid, s in list(self.sessions.items()):
-            if not s.done and (now_m - s.updated) > 120.0:
+            if not s.done and sid not in self.pending_complete and not self.running_steps.get(sid) and (now_m - s.updated) > 300.0:
                 s.done = True
                 s.state = 'idle'
                 s.message = '等待 Antigravity 新消息'

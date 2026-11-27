@@ -92,6 +92,12 @@ class ActivityThread(QThread):
             try:
                 for event in self.ag_tail.poll():
                     self.event.emit(event)
+                if time.monotonic()-self.last_read_scan>=3:
+                    self.last_read_scan=time.monotonic()
+                    try:pending=json.loads((self.session_dir/'task-notifications.json').read_text(encoding='utf-8')).get('unread',[])
+                    except (OSError,ValueError,AttributeError):pending=[]
+                    stale=self.ag_tail.stale_unread_keys(pending)
+                    if stale:self.event.emit(dict(kind='read_receipts',seen=stale))
                 if time.monotonic()-self.last_health_scan>=10:
                     self.last_health_scan=time.monotonic()
                     hooks_on=hooks_installed()

@@ -37,7 +37,8 @@ class ConversationRoster:
         disposable=sorted((s for s,v in self.items.items() if v['state'] not in ACTIVE and s not in self.pending),key=lambda s:self.items[s]['updated'],reverse=True)
         for sid in disposable[64:]:self.items.pop(sid,None)
     def selection(self,unread):
-        pending=list(dict.fromkeys(session_id(s) for s,t in reversed(unread)));self.pending=set(pending)
+        active_sids={v['session'] for v in self.items.values() if v['state'] in ACTIVE}
+        pending=[sid for sid in dict.fromkeys(session_id(s) for s,t in reversed(unread)) if sid not in active_sids];self.pending=set(pending)
         done=[dict(self.items.get(sid,dict(session=sid,title=self.names.get(sid) or '会话 '+sid[-4:],text='')),state='complete') for sid in pending]
         active=sorted([v for v in self.items.values() if v['state'] in ACTIVE and v['session'] not in pending],key=lambda v:(v['state']!='waiting',v['start'],v['session']))
         waiting=[v for v in active if v['state']=='waiting']

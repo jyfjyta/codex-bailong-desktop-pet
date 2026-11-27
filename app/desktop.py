@@ -629,6 +629,8 @@ class DesktopPet(EnhancedPet):
             if self.bubble.status_indicator.acknowledge_seen(event.get('seen',[])):self.bubble.refresh_status()
             return
         if event.get('kind')=='complete' and not self.bubble.status_indicator.notify_complete(event):return
+        if event.get('kind')=='status':
+            self.bubble.status_indicator.observe(event)
         if event.get('kind') in ('status','complete'):
             self.bubble.roster.observe(event)
         if event.get('kind') in ('status','complete','error'):
